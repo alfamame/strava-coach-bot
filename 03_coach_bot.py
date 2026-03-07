@@ -23,6 +23,9 @@ from importlib import import_module
 fetch_data = import_module("02_fetch_data")
 build_training_summary = fetch_data.build_training_summary
 
+send_email_module = import_module("04_send_email")
+send_coach_advice = send_email_module.send_coach_advice
+
 load_dotenv()
 
 
@@ -123,7 +126,7 @@ def run_coach_bot():
     llm = ChatAnthropic(
         model="claude-sonnet-4-6",
         temperature=0.7,
-        max_tokens=2048,
+        max_tokens=4096,
         api_key=os.getenv("ANTHROPIC_API_KEY")
     )
 
@@ -140,6 +143,13 @@ def run_coach_bot():
     print("=" * 60)
     print("✅ アドバイス生成完了")
     print("=" * 60)
+
+    # メール送信
+    try:
+        send_coach_advice(response.content)
+        print(f"✅ メール送信完了: {os.getenv('RECIPIENT_EMAIL')}")
+    except Exception as e:
+        print(f"⚠️ メール送信失敗: {e}")
 
     return response.content
 
