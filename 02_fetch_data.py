@@ -30,7 +30,8 @@ def get_access_token():
             "client_secret": CLIENT_SECRET,
             "refresh_token": REFRESH_TOKEN,
             "grant_type": "refresh_token",
-        }
+        },
+        timeout=10
     )
     data = response.json()
     if "access_token" not in data:
@@ -53,7 +54,8 @@ def get_recent_activities(access_token, days=7):
         params={
             "after": after_timestamp,
             "per_page": 30
-        }
+        },
+        timeout=10
     )
     return response.json()
 
@@ -63,7 +65,8 @@ def get_activity_zones(access_token, activity_id):
     headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(
         f"https://www.strava.com/api/v3/activities/{activity_id}/zones",
-        headers=headers
+        headers=headers,
+        timeout=10
     )
     return response.json()
 
@@ -73,7 +76,8 @@ def get_athlete_info(access_token):
     headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(
         "https://www.strava.com/api/v3/athlete",
-        headers=headers
+        headers=headers,
+        timeout=10
     )
     return response.json()
 
