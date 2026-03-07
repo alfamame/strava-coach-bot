@@ -96,6 +96,8 @@ def build_training_summary(days=7):
     
     access_token = get_access_token()
     activities   = get_recent_activities(access_token, days=days)
+    if not isinstance(activities, list):
+        raise Exception(f"アクティビティ取得失敗: {activities}")
     athlete      = get_athlete_info(access_token)
 
     if not activities:
