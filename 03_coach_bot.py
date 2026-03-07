@@ -17,9 +17,11 @@ from datetime import date
 from dotenv import load_dotenv
 
 from langchain_anthropic import ChatAnthropic
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
-from fetch_data import build_training_summary
+from importlib import import_module
+fetch_data = import_module("02_fetch_data")
+build_training_summary = fetch_data.build_training_summary
 
 load_dotenv()
 
