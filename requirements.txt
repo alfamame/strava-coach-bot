@@ -4,3 +4,4 @@ anthropic
 langchain
 langchain-anthropic
 langchain-core
+garminconnect

@@ -26,6 +26,9 @@ build_training_summary = fetch_data.build_training_summary
 send_email_module = import_module("04_send_email")
 send_coach_advice = send_email_module.send_coach_advice
 
+fetch_garmin = import_module("05_fetch_garmin")
+build_garmin_summary = fetch_garmin.build_garmin_summary
+
 load_dotenv()
 
 
@@ -64,24 +67,30 @@ COACH_PROMPT = ChatPromptTemplate.from_template("""
 
 {training_summary}
 
+{garmin_summary}
+
 【今日の日付】: {today}
 
 ---
 
 以下の観点でアドバイスをまとめてください：
 
-1. **直近のトレーニング状況の評価**
+1. **コンディション評価**
+   - 睡眠スコア・Body Battery・HRVから見た今日の体の状態
    - 疲労度はどの程度か
-   - Zone配分は適切か
 
-2. **今日のおすすめトレーニング**
-   - 具体的なメニューと強度
+2. **直近のトレーニング状況の評価**
+   - Zone配分は適切か
+   - 積算負荷のバランス
+
+3. **今日のおすすめトレーニング**
+   - 具体的なメニューと強度（コンディションに応じて調整）
    - 実施する場合の注意点
 
-3. **今週の残りのスケジュール提案**
+4. **今週の残りのスケジュール提案**
    - ライド・ラン・筋トレのバランス
 
-4. **体のケアアドバイス**
+5. **体のケアアドバイス**
    - 腰・股関節・体幹など気をつけること
 
 アドバイスは具体的で実践しやすい内容にしてください。
@@ -111,11 +120,24 @@ def run_coach_bot():
         print("サンプルデータで続行します...")
         summary_text = "直近7日間のデータが取得できませんでした。"
 
-    # Step 2: Claude APIでアドバイス生成
+    # Step 2: Garminデータを取得
+    try:
+        garmin_data = build_garmin_summary()
+        garmin_text = garmin_data["summary_text"]
+        print("✅ Garminデータ取得完了")
+        print()
+        print(garmin_text)
+        print()
+    except Exception as e:
+        print(f"⚠️ Garminデータ取得エラー: {e}")
+        garmin_text = "Garminデータが取得できませんでした。"
+
+    # Step 3: Claude APIでアドバイス生成
     print("=" * 60)
     print("🤖 Claudeがアドバイスを生成中...")
     print("=" * 60)
     print()
+
 
     llm = ChatAnthropic(
         model="claude-sonnet-4-6",
@@ -129,6 +151,7 @@ def run_coach_bot():
     response = chain.invoke({
         "athlete_profile": ATHLETE_PROFILE,
         "training_summary": summary_text,
+        "garmin_summary": garmin_text,
         "today": date.today().strftime("%Y年%m月%d日"),
     })
 
