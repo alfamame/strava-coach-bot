@@ -153,10 +153,13 @@ def build_garmin_summary(days: int = 1) -> dict:
 
     # HRV
     if hrv:
-        last_night = hrv.get("last_night_avg", "不明")
-        weekly_avg = hrv.get("weekly_avg", "不明")
-        status     = hrv.get("status", "")
-        lines.append(f"■ HRV（心拍変動）: 昨夜平均 {last_night}ms / 週平均 {weekly_avg}ms（状態: {status}）")
+        last_night = hrv.get("last_night_avg") or "不明"
+        weekly_avg = hrv.get("weekly_avg") or "不明"
+        status     = hrv.get("status") or ""
+        if last_night != "不明":
+            lines.append(f"■ HRV（心拍変動）: 昨夜平均 {last_night}ms / 週平均 {weekly_avg}ms（状態: {status}）")
+        else:
+            lines.append(f"■ HRV（心拍変動）: 週平均 {weekly_avg}ms（状態: {status}）※昨夜データなし")
     else:
         lines.append("■ HRV: データなし")
 
