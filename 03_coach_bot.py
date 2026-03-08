@@ -33,30 +33,24 @@ load_dotenv()
 # コーチBot設定
 # ============================================================
 
-# あなたの情報（プロンプトに組み込む固定情報）
-ATHLETE_PROFILE = """
-【アスリートプロフィール】
-- 年齢: 52歳 男性
-- 体重: 70kg / 体脂肪率: 27%
-- VO2Max: 47（ガーミン計測）
-- ガーミン持久力スコア: 高度な経験者
+# アスリートプロフィール（.envから読み込む）
+def build_athlete_profile() -> str:
+    return f"""【アスリートプロフィール】
+- 年齢: {os.getenv('ATHLETE_AGE')}歳 {os.getenv('ATHLETE_GENDER')}
+- 体重: {os.getenv('ATHLETE_WEIGHT_KG')}kg / 体脂肪率: {os.getenv('ATHLETE_BODY_FAT_PCT')}%
+- VO2Max: {os.getenv('ATHLETE_VO2MAX')}（ガーミン計測）
+- ガーミン持久力スコア: {os.getenv('ATHLETE_ENDURANCE_LEVEL')}
 - 主な目標:
-  1. ロードバイクでStravaセグメント上位10%に入る
-  2. 週100kmロングライドの完走
-  3. 体脂肪率を落としながら筋力向上
+  {os.getenv('ATHLETE_GOALS')}
 
 【週間トレーニング計画】
-- Zone2以下: 週4回（基礎有酸素）
-- Zone3以上: 週2回（高強度）
-- 休息日: 週1回
-- 筋トレ: デッドリフト・スクワット（2日おき）
+  {os.getenv('ATHLETE_TRAINING_PLAN')}
 
 【注意点・体の状態】
-- デッドリフトで腰痛が出やすい（フォーム改善中）
-- 猫背気味でデスクワーク多め
-- 背筋が弱め、体幹のブレあり
-- 股関節の使い方を改善中
+  {os.getenv('ATHLETE_NOTES')}
 """
+
+ATHLETE_PROFILE = build_athlete_profile()
 
 # ============================================================
 # プロンプトテンプレート
