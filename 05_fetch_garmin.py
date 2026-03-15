@@ -16,7 +16,7 @@ Garmin Connectから睡眠・Body Battery・HRV・ストレスデータを取得
 import os
 from datetime import date, timedelta
 from dotenv import load_dotenv
-from garminconnect import Garmin
+from garminconnect import Garmin, GarminConnectAuthenticationError
 
 load_dotenv()
 
@@ -100,6 +100,27 @@ def get_stress_data(client: Garmin, target_date: str) -> dict:
         return {}
 
 
+def get_activities(client: Garmin, target_date: str) -> list:
+    """指定日のアクティビティデータを取得（Strava重複項目は除外）"""
+    try:
+        activities = client.get_activities_by_date(target_date, target_date)
+        result = []
+        for act in activities:
+            result.append({
+                "name": act.get("activityName"),
+                "type": act.get("activityType", {}).get("typeKey"),
+                "calories": act.get("calories"),
+                "aerobic_training_effect": act.get("aerobicTrainingEffect"),
+                "anaerobic_training_effect": act.get("anaerobicTrainingEffect"),
+                "aerobic_te_label": act.get("aerobicTrainingEffectMessage"),
+                "anaerobic_te_label": act.get("anaerobicTrainingEffectMessage"),
+            })
+        return result
+    except Exception as e:
+        print(f"  ⚠️ アクティビティデータ取得失敗: {e}")
+        return []
+
+
 # ============================================================
 # サマリー生成
 # ============================================================
@@ -118,28 +139,40 @@ def build_garmin_summary(days: int = 1) -> dict:
 
     client = get_garmin_client()
     today = date.today()
-    target = (today - timedelta(days=1)).strftime("%Y-%m-%d")  # 昨日のデータ
+    yesterday = today - timedelta(days=1)
+    target = yesterday.strftime("%Y-%m-%d")  # 昨日のデータ（当日基準）
 
-    print(f"  対象日: {target}")
+    print(f"  対象日: {target}（睡眠は直近{days}日間）")
 
-    sleep   = get_sleep_data(client, target)
-    battery = get_body_battery(client, target)
-    hrv     = get_hrv_data(client, target)
-    stress  = get_stress_data(client, target)
+    # 睡眠は直近days日分を取得
+    sleep_list = []
+    for i in range(days):
+        d = (yesterday - timedelta(days=i)).strftime("%Y-%m-%d")
+        s = get_sleep_data(client, d)
+        if s:
+            sleep_list.append((d, s))
+
+    battery    = get_body_battery(client, target)
+    hrv        = get_hrv_data(client, target)
+    stress     = get_stress_data(client, target)
+    activities = get_activities(client, target)
 
     # テキスト生成
-    lines = [f"【Garminデータ（{target}）】"]
+    lines = [f"【Garminデータ（睡眠: 直近{days}日間 / その他: {target}）】"]
 
-    # 睡眠
-    if sleep:
-        score      = sleep.get("sleep_score", "不明")
-        total_h    = round(sleep.get("total_sleep_seconds", 0) / 3600, 1)
-        deep_min   = round(sleep.get("deep_sleep_seconds", 0) / 60)
-        rem_min    = round(sleep.get("rem_sleep_seconds", 0) / 60)
-        awake_min  = round(sleep.get("awake_seconds", 0) / 60)
-        lines.append(f"■ 睡眠")
-        lines.append(f"  睡眠スコア: {score}点")
-        lines.append(f"  総睡眠時間: {total_h}時間（深い睡眠: {deep_min}分 / REM: {rem_min}分 / 覚醒: {awake_min}分）")
+    # 睡眠（複数日）
+    if sleep_list:
+        lines.append(f"■ 睡眠（直近{days}日間）")
+        for d, sleep in sleep_list:
+            score     = sleep.get("sleep_score", "不明")
+            total_h   = round(sleep.get("total_sleep_seconds", 0) / 3600, 1)
+            deep_min  = round(sleep.get("deep_sleep_seconds", 0) / 60)
+            rem_min   = round(sleep.get("rem_sleep_seconds", 0) / 60)
+            awake_min = round(sleep.get("awake_seconds", 0) / 60)
+            lines.append(
+                f"  [{d}] スコア{score}点 / {total_h}時間"
+                f"（深い睡眠: {deep_min}分 / REM: {rem_min}分 / 覚醒: {awake_min}分）"
+            )
     else:
         lines.append("■ 睡眠: データなし")
 
@@ -171,15 +204,37 @@ def build_garmin_summary(days: int = 1) -> dict:
     else:
         lines.append("■ ストレス: データなし")
 
+    # アクティビティ（Strava重複項目除外・Garmin固有のみ）
+    if activities:
+        lines.append(f"■ アクティビティ（トレーニング効果・カロリー）")
+        for act in activities:
+            name    = act.get("name") or act.get("type") or "不明"
+            cal     = act.get("calories")
+            ae      = act.get("aerobic_training_effect")
+            an      = act.get("anaerobic_training_effect")
+            ae_lbl  = act.get("aerobic_te_label") or ""
+            an_lbl  = act.get("anaerobic_te_label") or ""
+            parts = [f"  {name}"]
+            if cal:
+                parts.append(f"カロリー: {cal}kcal")
+            if ae is not None:
+                parts.append(f"有酸素TE: {ae}（{ae_lbl}）")
+            if an is not None:
+                parts.append(f"無酸素TE: {an}（{an_lbl}）")
+            lines.append(" / ".join(parts))
+    else:
+        lines.append("■ アクティビティ: データなし")
+
     summary_text = "\n".join(lines)
 
     return {
         "summary_text": summary_text,
         "raw": {
-            "sleep": sleep,
+            "sleep": sleep_list,
             "battery": battery,
             "hrv": hrv,
             "stress": stress,
+            "activities": activities,
         }
     }
 

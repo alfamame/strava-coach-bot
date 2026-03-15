@@ -122,7 +122,7 @@ def run_coach_bot():
 
     # Step 2: Garminデータを取得
     try:
-        garmin_data = build_garmin_summary()
+        garmin_data = build_garmin_summary(days=7)
         garmin_text = garmin_data["summary_text"]
         print("✅ Garminデータ取得完了")
         print()
