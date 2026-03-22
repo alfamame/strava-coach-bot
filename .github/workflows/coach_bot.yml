@@ -2,12 +2,14 @@ name: Daily Coach Bot
 
 on:
   schedule:
-    - cron: '0 21 * * *'  # 毎日 6:00 JST (= 21:00 UTC 前日)
-  workflow_dispatch:       # GitHub UI から手動実行も可能
+    - cron: '30 21 * * *'  # 毎日 6:30 JST (= 21:30 UTC 前日)
+  workflow_dispatch:        # GitHub UI から手動実行も可能
 
 jobs:
   run-coach-bot:
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Tokyo  # date.today() を JST 基準にする（Garmin の日付ズレ防止）
 
     steps:
       - name: Checkout repository
