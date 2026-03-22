@@ -1,0 +1,45 @@
+name: Daily Coach Bot
+
+on:
+  schedule:
+    - cron: '0 21 * * *'  # 毎日 6:00 JST (= 21:00 UTC 前日)
+  workflow_dispatch:       # GitHub UI から手動実行も可能
+
+jobs:
+  run-coach-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run coach bot
+        env:
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+          ATHLETE_AGE: ${{ secrets.ATHLETE_AGE }}
+          ATHLETE_GENDER: ${{ secrets.ATHLETE_GENDER }}
+          ATHLETE_WEIGHT_KG: ${{ secrets.ATHLETE_WEIGHT_KG }}
+          ATHLETE_BODY_FAT_PCT: ${{ secrets.ATHLETE_BODY_FAT_PCT }}
+          ATHLETE_VO2MAX: ${{ secrets.ATHLETE_VO2MAX }}
+          ATHLETE_ENDURANCE_LEVEL: ${{ secrets.ATHLETE_ENDURANCE_LEVEL }}
+          ATHLETE_GOALS: ${{ secrets.ATHLETE_GOALS }}
+          ATHLETE_TRAINING_PLAN: ${{ secrets.ATHLETE_TRAINING_PLAN }}
+          ATHLETE_NOTES: ${{ secrets.ATHLETE_NOTES }}
+        run: python 03_coach_bot.py
