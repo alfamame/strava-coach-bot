@@ -13,8 +13,16 @@ strava_coach_bot/
 ├── 02_fetch_data.py    ← Stravaからトレーニングデータ取得・整形
 ├── 03_coach_bot.py     ← AIコーチアドバイス生成＋メール送信（メイン）
 ├── 04_send_email.py    ← Gmail送信モジュール
+├── 05_fetch_garmin.py  ← Garmin Connectデータ取得（feature/garmin-connect ブランチ）
 └── requirements.txt    ← 必要なライブラリ
 ```
+
+## ブランチ
+
+| ブランチ | 内容 |
+|----------|------|
+| `main` | 安定版・商用ベース（Strava + Claude + Gmail） |
+| `feature/garmin-connect` | 個人利用向け Garmin Connect 統合版 |
 
 ## セットアップ手順
 
@@ -91,6 +99,25 @@ cat /tmp/coach_bot.log
 
 > **注意**: macOS Apple SiliconではMacがスリープ中はcronが実行されません。充電ケーブルを接続しスリープを無効化した状態で使用してください。
 
+## Garmin Connect 統合（feature/garmin-connect ブランチ）
+
+`feature/garmin-connect` ブランチでは、Garmin Connectの以下のデータをコーチアドバイスに追加：
+
+- 睡眠スコア・総睡眠時間（深い睡眠 / REM / 覚醒）
+- Body Battery（充電量・消費量）
+- HRV（心拍変動）週平均・昨夜平均
+- ストレスレベル（平均・最大）
+
+> **注意**: `garminconnect` は非公式ライブラリです。個人利用のみ推奨。商用利用には公式APIをご確認ください。
+
+### Garmin利用時の追加設定
+
+`.env` に以下を追加：
+```
+GARMIN_EMAIL=your_garmin_email@example.com
+GARMIN_PASSWORD=your_garmin_password
+```
+
 ## 環境変数一覧
 
 | 変数名 | 説明 |
@@ -99,9 +126,11 @@ cat /tmp/coach_bot.log
 | `STRAVA_CLIENT_SECRET` | Strava APIのClient Secret |
 | `STRAVA_REFRESH_TOKEN` | Stravaのリフレッシュトークン（01実行後取得）|
 | `ANTHROPIC_API_KEY` | Anthropic Claude APIキー |
-| `GMAIL_ADDRESS` | 送信元GmailアドレスF |
+| `GMAIL_ADDRESS` | 送信元Gmailアドレス |
 | `GMAIL_APP_PASSWORD` | Gmailアプリパスワード（16桁）|
 | `RECIPIENT_EMAIL` | コーチアドバイスの受信先メールアドレス |
+| `GARMIN_EMAIL` | Garmin ConnectアカウントのEmail（feature ブランチのみ）|
+| `GARMIN_PASSWORD` | Garmin Connectアカウントのパスワード（feature ブランチのみ）|
 | `ATHLETE_AGE` | 年齢 |
 | `ATHLETE_GENDER` | 性別 |
 | `ATHLETE_WEIGHT_KG` | 体重(kg) |
@@ -116,7 +145,8 @@ cat /tmp/coach_bot.log
 
 - Python
 - Strava API（アクティビティデータ取得）
+- Garmin Connect 非公式API（garminconnect）※feature ブランチのみ
 - Claude API（claude-sonnet-4-6）
-- LangChain（langchain-anthropic）
+- LangChain（langchain-anthropic、langchain-core）
 - Gmail SMTP（smtplib）
 - python-dotenv（環境変数管理）
