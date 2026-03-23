@@ -14,6 +14,10 @@ Garmin Connectから睡眠・Body Battery・HRV・ストレスデータを取得
 """
 
 import os
+import base64
+import tarfile
+import io
+import tempfile
 from datetime import date, timedelta
 from dotenv import load_dotenv
 from garminconnect import Garmin, GarminConnectAuthenticationError
@@ -29,7 +33,23 @@ GARMIN_PASSWORD = os.getenv("GARMIN_PASSWORD")
 # ============================================================
 
 def get_garmin_client() -> Garmin:
-    """Garmin Connectにログインしてクライアントを返す"""
+    """Garmin Connectにログインしてクライアントを返す。
+
+    GARMIN_TOKENS 環境変数（base64エンコード済みトークン）があれば
+    それを使用してログインをスキップする（GitHub Actions用）。
+    なければメール/パスワードでログインする（ローカル用）。
+    """
+    garmin_tokens_b64 = os.getenv("GARMIN_TOKENS")
+
+    if garmin_tokens_b64:
+        token_bytes = base64.b64decode(garmin_tokens_b64)
+        tmpdir = tempfile.mkdtemp()
+        with tarfile.open(fileobj=io.BytesIO(token_bytes), mode="r:gz") as tar:
+            tar.extractall(tmpdir)
+        client = Garmin()
+        client.garth.load(tmpdir)
+        return client
+
     client = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
     client.login()
     return client
