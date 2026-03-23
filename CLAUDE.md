@@ -1,76 +1,70 @@
-# Strava パーソナルコーチBot - プロジェクト情報
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## プロジェクト概要
-StravaのトレーニングデータをClaude APIで分析し、パーソナルコーチとしてアドバイスを生成するBot。毎朝メールで配信。
+StravaのトレーニングデータとGarmin Connectのコンディションデータを Claude API で分析し、パーソナルコーチアドバイスを毎朝メール配信するBot。
 
-## ファイル構成
-- `01_get_token.py` - Strava OAuthトークン取得（初回1回だけ実行）
-- `02_fetch_data.py` - Stravaからトレーニングデータ取得・整形
-- `03_coach_bot.py` - Claude APIでコーチアドバイス生成＋Gmail送信（メイン）
-- `04_send_email.py` - Gmail SMTPメール送信モジュール
-- `05_fetch_garmin.py` - Garmin Connectから睡眠・Body Battery・HRV・ストレスデータ取得（feature/garmin-connect ブランチ）
-- `.env` - APIキー・個人情報保存（Gitに上げない）
-- `.env.example` - .envのテンプレート
+## 実行コマンド
 
-## ブランチ戦略
-- `main` - 安定版・商用ベース（Strava + Claude + Gmail）
-- `feature/garmin-connect` - 個人利用向け Garmin Connect 統合版
-
-## 実行方法
 ```bash
-# 初回セットアップのみ
+# 依存パッケージのインストール
+pip install -r requirements.txt
+
+# 初回のみ：Strava OAuthトークン取得（ブラウザ認証が必要）
 python 01_get_token.py
 
-# 毎日の使用
+# メインBot実行（Strava + Garmin → Claude → Gmail）
 python 03_coach_bot.py
+
+# 各モジュールの単体動作確認
+python 02_fetch_data.py      # Stravaデータ取得テスト
+python 05_fetch_garmin.py    # Garminデータ取得テスト
+python 04_send_email.py      # メール送信テスト
 ```
 
-## 技術スタック
-- Python
-- Strava API（アクティビティデータ取得）
-- Garmin Connect 非公式API（garminconnect ライブラリ）※feature ブランチのみ
-- Claude API（claude-sonnet-4-6）
-- LangChain（langchain-anthropic、langchain-core）
-- Gmail SMTP（smtplib + アプリパスワード）
-- python-dotenv（環境変数管理）
-- cron（macOS定期実行）
+## アーキテクチャ
 
-## アスリートプロフィール（.envで管理）
-個人情報のため `.env` に定義し、`03_coach_bot.py` が読み込む。
-更新は `.env` の以下の項目を編集：
-- `ATHLETE_AGE` / `ATHLETE_GENDER`
-- `ATHLETE_WEIGHT_KG` / `ATHLETE_BODY_FAT_PCT`
-- `ATHLETE_VO2MAX` / `ATHLETE_ENDURANCE_LEVEL`
-- `ATHLETE_GOALS` - 目標（/ 区切りで複数）
-- `ATHLETE_TRAINING_PLAN` - 週間計画
-- `ATHLETE_NOTES` - 体の注意点
-
-## 環境変数（.envに設定）
+### データフロー
 ```
-STRAVA_CLIENT_ID=
-STRAVA_CLIENT_SECRET=
-STRAVA_REFRESH_TOKEN=    # 01_get_token.py実行後に取得
-ANTHROPIC_API_KEY=
-GMAIL_ADDRESS=
-GMAIL_APP_PASSWORD=      # Googleアカウントのアプリパスワード（16桁）
-RECIPIENT_EMAIL=
-GARMIN_EMAIL=            # feature/garmin-connect ブランチのみ
-GARMIN_PASSWORD=         # feature/garmin-connect ブランチのみ
-ATHLETE_AGE=
-ATHLETE_GENDER=
-ATHLETE_WEIGHT_KG=
-ATHLETE_BODY_FAT_PCT=
-ATHLETE_VO2MAX=
-ATHLETE_ENDURANCE_LEVEL=
-ATHLETE_GOALS=
-ATHLETE_TRAINING_PLAN=
-ATHLETE_NOTES=
+Strava API (02) ─┐
+                  ├→ 03_coach_bot.py → Claude API → Gmail (04)
+Garmin API  (05) ─┘
 ```
 
-## 開発メモ
-- 取得日数はデフォルト7日間（`build_training_summary(days=7)`）
-- `02_fetch_data.py` / `04_send_email.py` / `05_fetch_garmin.py` は `importlib` でimport
-- max_tokens=4096（長いアドバイスでも途切れないよう設定）
-- cronログ: `/tmp/coach_bot.log`
-- Garmin Connect は非公式APIのため商用利用不可。個人利用・feature ブランチのみで使用
-- `05_fetch_garmin.py` は昨日のデータを取得（今日分は翌日確定）
+`03_coach_bot.py` がエントリポイント。`importlib` で他モジュールを動的ロードしている（ファイル名が数字始まりで通常の `import` が使えないため）。
+
+### 各モジュールの責務
+- **02_fetch_data.py** — Strava REST API からアクティビティ一覧・心拍ゾーン・アスリート情報を取得し、LLM 向けのテキストサマリー（`build_training_summary(days=7)`）を返す
+- **05_fetch_garmin.py** — Garmin Connect 非公式ライブラリで睡眠・Body Battery・HRV・ストレスを取得。**常に「昨日」のデータを参照**（当日分は翌日以降に確定するため）。`build_garmin_summary(days=7)` を返す
+- **03_coach_bot.py** — 上記2つのサマリーとアスリートプロフィール（.env）を LangChain の `ChatPromptTemplate` に渡し、LangChain LCEL チェーン（`COACH_PROMPT | llm`）で Claude API を呼び出す。レスポンスを `04_send_email.py` に渡してメール送信
+- **04_send_email.py** — Gmail SMTP（SSL/465番ポート）でメール送信
+
+### アスリートプロフィール
+個人情報は `.env` で管理。`03_coach_bot.py` 起動時に `build_athlete_profile()` が読み込み、プロンプトに埋め込む。変更は `.env` の `ATHLETE_*` 変数を編集すればよい。
+
+## ブランチ戦略
+- `main` — GitHub Actions による自動実行を含む安定版（Garmin統合済み）
+- `feature/garmin-connect` — Garmin 統合の開発ブランチ
+
+## 自動実行（GitHub Actions）
+`.github/workflows/coach_bot.yml` が毎日 **6:30 JST**（21:30 UTC）に `03_coach_bot.py` を実行。すべての認証情報は GitHub Secrets で管理。ローカル実行時は `.env` から読み込む。`TZ=Asia/Tokyo` を明示設定しないと Garmin のデータ日付がズレるので注意。
+
+## 重要な制約
+- Garmin Connect ライブラリは**非公式API**のため商用利用不可。個人利用のみ
+- Strava の心拍ゾーン取得（`get_activity_zones()`）は Strava サブスクリプションが必要
+- `max_tokens=4096` に設定済み（長いアドバイスが途中で切れないよう）
+- cron ローカル実行時のログ: `/tmp/coach_bot.log`
+
+## 環境変数（.env / GitHub Secrets）
+```
+STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET / STRAVA_REFRESH_TOKEN
+ANTHROPIC_API_KEY
+GMAIL_ADDRESS / GMAIL_APP_PASSWORD / RECIPIENT_EMAIL
+GARMIN_EMAIL / GARMIN_PASSWORD
+ATHLETE_AGE / ATHLETE_GENDER / ATHLETE_WEIGHT_KG / ATHLETE_BODY_FAT_PCT
+ATHLETE_VO2MAX / ATHLETE_ENDURANCE_LEVEL
+ATHLETE_GOALS          # / 区切りで複数指定
+ATHLETE_TRAINING_PLAN  # 週間計画
+ATHLETE_NOTES          # 体の注意点
+```
