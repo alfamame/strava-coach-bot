@@ -3,62 +3,68 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## プロジェクト概要
-StravaのトレーニングデータをClaude APIで分析し、パーソナルコーチアドバイスを生成してGmailで毎朝配信するBot。フロントエンド（LP）も含む。
+StravaのトレーニングデータとGarmin Connectのコンディションデータを Claude API で分析し、パーソナルコーチアドバイスを毎朝メール配信するBot。
 
 ## 実行コマンド
 
 ```bash
-# ライブラリインストール
+# 依存パッケージのインストール
 pip install -r requirements.txt
 
-# 初回のみ：Stravaトークン取得
+# 初回のみ：Strava OAuthトークン取得（ブラウザ認証が必要）
 python 01_get_token.py
 
-# データ取得テスト
-python 02_fetch_data.py
-
-# コーチBot実行（アドバイス生成＋メール送信）
+# メインBot実行（Strava + Garmin → Claude → Gmail）
 python 03_coach_bot.py
 
-# メール送信テスト
-python 04_send_email.py
+# 各モジュールの単体動作確認
+python 02_fetch_data.py      # Stravaデータ取得テスト
+python 05_fetch_garmin.py    # Garminデータ取得テスト
+python 04_send_email.py      # メール送信テスト
 ```
 
 ## アーキテクチャ
 
+### データフロー
 ```
-01_get_token.py   → Strava OAuth認証（初回1回のみ）
-02_fetch_data.py  → Strava API呼び出し・データ整形（build_training_summary）
-03_coach_bot.py   → メイン処理（02と04をimportlibで動的import）
-04_send_email.py  → Gmail SMTP送信（send_coach_advice）
-frontend/
-└── index.html    → サービスLP「追い風」（単一HTMLファイル、依存なし）
+Strava API (02) ─┐
+                  ├→ 03_coach_bot.py → Claude API → Gmail (04)
+Garmin API  (05) ─┘
 ```
 
-**03_coach_bot.py のデータフロー：**
-1. `02_fetch_data.build_training_summary(days=7)` でStravaデータ取得
-2. `.env` からアスリートプロフィールを読み込み `build_athlete_profile()` で構築
-3. LangChain + Claude API（claude-sonnet-4-6）でアドバイス生成
-4. `04_send_email.send_coach_advice()` でGmail送信
+`03_coach_bot.py` がエントリポイント。`importlib` で他モジュールを動的ロードしている（ファイル名が数字始まりで通常の `import` が使えないため）。
 
-## 重要な実装メモ
+### 各モジュールの責務
+- **02_fetch_data.py** — Strava REST API からアクティビティ一覧・心拍ゾーン・アスリート情報を取得し、LLM 向けのテキストサマリー（`build_training_summary(days=7)`）を返す
+- **05_fetch_garmin.py** — Garmin Connect 非公式ライブラリで睡眠・Body Battery・HRV・ストレスを取得。**常に「昨日」のデータを参照**（当日分は翌日以降に確定するため）。`build_garmin_summary(days=7)` を返す
+- **03_coach_bot.py** — 上記2つのサマリーとアスリートプロフィール（.env）を LangChain の `ChatPromptTemplate` に渡し、LangChain LCEL チェーン（`COACH_PROMPT | llm`）で Claude API を呼び出す。レスポンスを `04_send_email.py` に渡してメール送信
+- **04_send_email.py** — Gmail SMTP（SSL/465番ポート）でメール送信
 
-- `02_fetch_data.py` と `04_send_email.py` は `importlib.import_module` で動的importしている（ファイル名が数字始まりのため通常importできない）
-- アスリートプロフィールは `.env` で管理（`ATHLETE_*` 変数群）、コードに直接書かない
-- `max_tokens=4096` に設定済み
-- Stravaアクセストークンは毎回 `STRAVA_REFRESH_TOKEN` から自動更新する（`get_access_token()` が呼び出しごとに新トークンを取得）
-- `get_activity_zones()` はStravaプレミアムサブスクリプションが必要。現在のメインフローでは使用していない
-- Gmail送信は SMTP_SSL（ポート465）経由。`GMAIL_APP_PASSWORD` はGoogleアカウントの「アプリパスワード」（16桁）であり、通常のパスワードではない
+### アスリートプロフィール
+個人情報は `.env` で管理。`03_coach_bot.py` 起動時に `build_athlete_profile()` が読み込み、プロンプトに埋め込む。変更は `.env` の `ATHLETE_*` 変数を編集すればよい。
 
-## 環境変数（.envに設定）
+## ブランチ戦略
+- `main` — GitHub Actions による自動実行を含む安定版（Garmin統合済み）
+- `feature/garmin-connect` — Garmin 統合の開発ブランチ
 
-`.env.example` を `.env` にコピーして各値を設定する。
+## 自動実行（GitHub Actions）
+`.github/workflows/coach_bot.yml` が毎日 **6:30 JST**（21:30 UTC）に `03_coach_bot.py` を実行。すべての認証情報は GitHub Secrets で管理。ローカル実行時は `.env` から読み込む。`TZ=Asia/Tokyo` を明示設定しないと Garmin のデータ日付がズレるので注意。
 
-| 変数 | 説明 |
-|------|------|
-| `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | Strava APIアプリ情報 |
-| `STRAVA_REFRESH_TOKEN` | 01_get_token.py実行後に取得 |
-| `ANTHROPIC_API_KEY` | Claude API（別途課金、Proプランとは別） |
-| `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` | Gmail送信用（アプリパスワード16桁） |
-| `RECIPIENT_EMAIL` | 送信先アドレス |
-| `ATHLETE_AGE` / `ATHLETE_GENDER` / `ATHLETE_WEIGHT_KG` etc. | プロフィール情報 |
+## 重要な制約
+- Garmin Connect ライブラリは**非公式API**のため商用利用不可。個人利用のみ
+- Strava の心拍ゾーン取得（`get_activity_zones()`）は Strava サブスクリプションが必要
+- `max_tokens=4096` に設定済み（長いアドバイスが途中で切れないよう）
+- cron ローカル実行時のログ: `/tmp/coach_bot.log`
+
+## 環境変数（.env / GitHub Secrets）
+```
+STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET / STRAVA_REFRESH_TOKEN
+ANTHROPIC_API_KEY
+GMAIL_ADDRESS / GMAIL_APP_PASSWORD / RECIPIENT_EMAIL
+GARMIN_EMAIL / GARMIN_PASSWORD
+ATHLETE_AGE / ATHLETE_GENDER / ATHLETE_WEIGHT_KG / ATHLETE_BODY_FAT_PCT
+ATHLETE_VO2MAX / ATHLETE_ENDURANCE_LEVEL
+ATHLETE_GOALS          # / 区切りで複数指定
+ATHLETE_TRAINING_PLAN  # 週間計画
+ATHLETE_NOTES          # 体の注意点
+```
