@@ -1,67 +1,64 @@
-# Strava パーソナルコーチBot - プロジェクト情報
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## プロジェクト概要
-StravaのトレーニングデータをClaude APIで分析し、パーソナルコーチとしてアドバイスを生成するBot。毎朝メールで配信。
+StravaのトレーニングデータをClaude APIで分析し、パーソナルコーチアドバイスを生成してGmailで毎朝配信するBot。フロントエンド（LP）も含む。
 
-## ファイル構成
-- `01_get_token.py` - Strava OAuthトークン取得（初回1回だけ実行）
-- `02_fetch_data.py` - Stravaからトレーニングデータ取得・整形
-- `03_coach_bot.py` - Claude APIでコーチアドバイス生成＋Gmail送信（メイン）
-- `04_send_email.py` - Gmail SMTPメール送信モジュール
-- `.env` - APIキー・個人情報保存（Gitに上げない）
-- `.env.example` - .envのテンプレート
+## 実行コマンド
 
-## 実行方法
 ```bash
-# 初回セットアップのみ
+# ライブラリインストール
+pip install -r requirements.txt
+
+# 初回のみ：Stravaトークン取得
 python 01_get_token.py
 
-# 毎日の使用
+# データ取得テスト
+python 02_fetch_data.py
+
+# コーチBot実行（アドバイス生成＋メール送信）
 python 03_coach_bot.py
+
+# メール送信テスト
+python 04_send_email.py
 ```
 
-## 技術スタック
-- Python
-- Strava API（アクティビティデータ取得）
-- Claude API（claude-sonnet-4-6）
-- LangChain（langchain-anthropic、langchain-core）
-- Gmail SMTP（smtplib + アプリパスワード）
-- python-dotenv（環境変数管理）
-- cron（macOS定期実行）
+## アーキテクチャ
 
-## アスリートプロフィール（.envで管理）
-個人情報のため `.env` に定義し、`03_coach_bot.py` が読み込む。
-更新は `.env` の以下の項目を編集：
-- `ATHLETE_AGE` / `ATHLETE_GENDER`
-- `ATHLETE_WEIGHT_KG` / `ATHLETE_BODY_FAT_PCT`
-- `ATHLETE_VO2MAX` / `ATHLETE_ENDURANCE_LEVEL`
-- `ATHLETE_GOALS` - 目標（/ 区切りで複数）
-- `ATHLETE_TRAINING_PLAN` - 週間計画
-- `ATHLETE_NOTES` - 体の注意点
+```
+01_get_token.py   → Strava OAuth認証（初回1回のみ）
+02_fetch_data.py  → Strava API呼び出し・データ整形（build_training_summary）
+03_coach_bot.py   → メイン処理（02と04をimportlibで動的import）
+04_send_email.py  → Gmail SMTP送信（send_coach_advice）
+frontend/
+└── index.html    → サービスLP「追い風」（単一HTMLファイル、依存なし）
+```
+
+**03_coach_bot.py のデータフロー：**
+1. `02_fetch_data.build_training_summary(days=7)` でStravaデータ取得
+2. `.env` からアスリートプロフィールを読み込み `build_athlete_profile()` で構築
+3. LangChain + Claude API（claude-sonnet-4-6）でアドバイス生成
+4. `04_send_email.send_coach_advice()` でGmail送信
+
+## 重要な実装メモ
+
+- `02_fetch_data.py` と `04_send_email.py` は `importlib.import_module` で動的importしている（ファイル名が数字始まりのため通常importできない）
+- アスリートプロフィールは `.env` で管理（`ATHLETE_*` 変数群）、コードに直接書かない
+- `max_tokens=4096` に設定済み
+- Stravaアクセストークンは毎回 `STRAVA_REFRESH_TOKEN` から自動更新する（`get_access_token()` が呼び出しごとに新トークンを取得）
+- `get_activity_zones()` はStravaプレミアムサブスクリプションが必要。現在のメインフローでは使用していない
+- Gmail送信は SMTP_SSL（ポート465）経由。`GMAIL_APP_PASSWORD` はGoogleアカウントの「アプリパスワード」（16桁）であり、通常のパスワードではない
 
 ## 環境変数（.envに設定）
-```
-STRAVA_CLIENT_ID=
-STRAVA_CLIENT_SECRET=
-STRAVA_REFRESH_TOKEN=    # 01_get_token.py実行後に取得
-ANTHROPIC_API_KEY=
-GMAIL_ADDRESS=
-GMAIL_APP_PASSWORD=      # Googleアカウントのアプリパスワード（16桁）
-RECIPIENT_EMAIL=
-ATHLETE_AGE=
-ATHLETE_GENDER=
-ATHLETE_WEIGHT_KG=
-ATHLETE_BODY_FAT_PCT=
-ATHLETE_VO2MAX=
-ATHLETE_ENDURANCE_LEVEL=
-ATHLETE_GOALS=
-ATHLETE_TRAINING_PLAN=
-ATHLETE_NOTES=
-```
 
-## 開発メモ
-- 取得日数はデフォルト7日間（`build_training_summary(days=7)`）
-- `02_fetch_data.py` は `03_coach_bot.py` から `importlib` でimport
-- `04_send_email.py` は `03_coach_bot.py` から `importlib` でimport
-- max_tokens=4096（長いアドバイスでも途切れないよう設定）
-- cronログ: `/tmp/coach_bot.log`
+`.env.example` を `.env` にコピーして各値を設定する。
+
+| 変数 | 説明 |
+|------|------|
+| `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | Strava APIアプリ情報 |
+| `STRAVA_REFRESH_TOKEN` | 01_get_token.py実行後に取得 |
+| `ANTHROPIC_API_KEY` | Claude API（別途課金、Proプランとは別） |
+| `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` | Gmail送信用（アプリパスワード16桁） |
+| `RECIPIENT_EMAIL` | 送信先アドレス |
+| `ATHLETE_AGE` / `ATHLETE_GENDER` / `ATHLETE_WEIGHT_KG` etc. | プロフィール情報 |
